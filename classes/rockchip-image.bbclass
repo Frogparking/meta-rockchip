@@ -169,6 +169,9 @@ gen_rkparameter() {
 	echo "uuid: rootfs=${RK_ROOTDEV_UUID}" >> "${OUT}"
 }
 
+RK_IMAGES ?= "loader.bin uboot.env uboot.img trust.img boot.img"
+do_image_complete[vardeps] += "RK_IMAGES"
+
 IMAGE_POSTPROCESS_COMMAND:append = " gen_rkupdateimg;"
 do_image[depends] += "rk-binary-native:do_populate_sysroot"
 gen_rkupdateimg() {
@@ -184,8 +187,6 @@ gen_rkupdateimg() {
 	fi
 
 	cd "${IMGDEPLOYDIR}"
-
-	RK_IMAGES="loader.bin uboot.env uboot.img trust.img boot.img"
 
 	# Create temporary symlinks, because the tool would crash with abs pathes
 	for img in ${RK_IMAGES};do
