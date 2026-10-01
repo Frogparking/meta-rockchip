@@ -43,12 +43,6 @@ do_post_rootfs() {
 	done
 }
 
-IMAGE_POSTPROCESS_COMMAND:append = " link_rootfs_image;"
-link_rootfs_image() {
-	ln -sf "${IMAGE_LINK_NAME}.${RK_ROOTFS_TYPE}" \
-		"${IMGDEPLOYDIR}/rootfs.img"
-}
-
 WKS_FILE ?= "generic-gptdisk.wks.in"
 
 # Some partitons, e.g. trust, are allowed to be optional.
@@ -145,7 +139,6 @@ gen_rkparameter() {
 	cd "${IMGDEPLOYDIR}"
 
 	OUT="${IMAGE_LINK_NAME}.parameter"
-	ln -sf "${OUT}" parameter
 
 	echo "Generating ${OUT}..."
 
@@ -170,7 +163,11 @@ gen_rkparameter() {
 }
 
 RK_IMAGES ?= "loader.bin uboot.env uboot.img trust.img boot.img"
-do_image_complete[vardeps] += "RK_IMAGES"
+
+# Allow downstream to disable the creation of update.img symlink.
+RK_UPDATE_IMAGE_LINK ?= "1"
+
+do_image_complete[vardeps] += "RK_IMAGES RK_UPDATE_IMAGE_LINK"
 
 IMAGE_POSTPROCESS_COMMAND:append = " gen_rkupdateimg;"
 do_image[depends] += "rk-binary-native:do_populate_sysroot"
@@ -186,18 +183,24 @@ gen_rkupdateimg() {
 		return
 	fi
 
-	cd "${IMGDEPLOYDIR}"
+	# package in private folder.
+	PACKDIR="${WORKDIR}/rkupdate"
+	rm -rf "${PACKDIR}"
+	mkdir -p "${PACKDIR}"
+	cd "${PACKDIR}"
 
-	# Create temporary symlinks, because the tool would crash with abs pathes
+	# prepare symlinks for afptool
 	for img in ${RK_IMAGES};do
 		f="${DEPLOY_DIR_IMAGE}/${img}"
 		[ -f "${f}" ] && ln -sf "${f}" .
 	done
+	ln -sf "${IMGDEPLOYDIR}/${IMAGE_LINK_NAME}.${RK_ROOTFS_TYPE}" rootfs.img
+	ln -sf "${IMGDEPLOYDIR}/${IMAGE_LINK_NAME}.parameter" parameter
 
-	OUT="${IMAGE_LINK_NAME}.package-file"
+	OUT="${IMGDEPLOYDIR}/${IMAGE_LINK_NAME}.package-file"
 	ln -sf "${OUT}" package-file
 
-	echo "Generating ${OUT}..."
+	echo "Generating ${IMAGE_LINK_NAME}.package-file..."
 
 	echo "# IMAGE_NAME: $(readlink ${IMAGE})" > "${OUT}"
 	echo "package-file package-file" >> "${OUT}"
@@ -221,9 +224,13 @@ gen_rkupdateimg() {
 	rkImageMaker -RK$(hexdump -s 21 -n 4 -e '4/1 "%c"' loader.bin | rev) \
 		loader.bin update.raw.img "${IMAGE_LINK_NAME}.update.img" \
 		-os_type:androidos
-	ln -sf "${IMAGE_LINK_NAME}.update.img" update.img
 
-	rm -rf ${RK_IMAGES} update.raw.img
+	mv "${IMAGE_LINK_NAME}.update.img" "${IMGDEPLOYDIR}/"
+	if [ "${RK_UPDATE_IMAGE_LINK}" = "1" ];then
+		ln -sf "${IMAGE_LINK_NAME}.update.img" "${IMGDEPLOYDIR}/update.img"
+	fi
+
+	rm -rf "${PACKDIR}"
 }
 
 IMAGE_POSTPROCESS_COMMAND:append = " link_latest_image;"
